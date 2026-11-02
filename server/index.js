@@ -11,6 +11,7 @@ import { handleDiceRequest } from './dice.js'
 import { handleKeepAliveRequest, startRenderKeepAlive } from './keep-render-awake.js'
 import { handleMinesRequest } from './mines.js'
 import { handlePaymentsRequest } from './payments.js'
+import { handleHacksawRequest } from './providers/hacksaw/index.js'
 import { handleRouletteRequest } from './roulette.js'
 import { handleUpgraderRequest } from './upgrader.js'
 
@@ -1419,6 +1420,7 @@ async function handleRequest(request, response, env) {
     }
     const routeContext = { request, response, url, env, api: routeApi }
     const routeHandlers = [
+      handleHacksawRequest,
       handleAffiliatesRequest,
       handlePaymentsRequest,
       handleAssetsRequest,
@@ -1438,7 +1440,7 @@ async function handleRequest(request, response, env) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed.'
     const containsInternalConfiguration = /supabase|api key|credential|server environment|fetch failed/i.test(message)
-    const gameServiceRoute = /^\/api\/(?:battles|cases|welcome|affiliates|dice|blackjack|coinflip|mines|x-roulette|upgrader)(?:\/|$)/.test(url.pathname)
+    const gameServiceRoute = /^\/api\/(?:battles|cases|welcome|affiliates|dice|blackjack|coinflip|mines|x-roulette|upgrader|slots|casino-games)(?:\/|$)/.test(url.pathname)
     const insufficientGameBalance = gameServiceRoute && /(?:do not have enough|insufficient balance)/i.test(message)
     sendJson(response, gameServiceRoute && containsInternalConfiguration ? 503 : 400, {
       error: insufficientGameBalance
