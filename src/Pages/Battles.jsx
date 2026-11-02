@@ -1,4 +1,5 @@
 import {
+  createContext,
   Fragment,
   memo,
   useCallback,
@@ -7,10 +8,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useContext,
 } from "react";
 import confetti from "canvas-confetti";
-import BattleIcon from "../components/BattleIcons";
-import CaseInfoModal from "../components/CaseInfoModal";
+import DefaultBattleIcon from "../components/BattleIcons";
+import DefaultCaseInfoModal from "../components/CaseInfoModal";
 import SiteIcon from "../components/Icons";
 import ModalAnimation from "../components/ModalAnimation";
 import { ItemCard, Pattern } from "./CaseOpen";
@@ -106,6 +108,37 @@ function formatAmount(value) {
 
 function currencyIcon(currency) {
   return currency === "coins" ? "/assets/currency/coin.svg" : "/assets/currency/rocoin.2d3febd5.svg";
+}
+
+const BattlePriceIconContext = createContext(null);
+const BattleRowVariantContext = createContext("rorisk");
+const BattleRanksContext = createContext(true);
+const renderDefaultBattleIcon = (props) => <DefaultBattleIcon {...props} />;
+const BattleIconContext = createContext(renderDefaultBattleIcon);
+const renderDefaultCaseInfoModal = (props) => <DefaultCaseInfoModal {...props} />;
+const BattleCaseInfoModalContext = createContext(renderDefaultCaseInfoModal);
+
+function BattleIcon(props) {
+  const renderIcon = useContext(BattleIconContext);
+  return renderIcon(props);
+}
+
+function BattleCurrencyIcon({ currency, ...props }) {
+  const priceIcon = useContext(BattlePriceIconContext);
+  return <img src={priceIcon || currencyIcon(currency)} {...props} />;
+}
+
+function BattleCaseInfoModal(props) {
+  const renderModal = useContext(BattleCaseInfoModalContext);
+  return renderModal(props);
+}
+
+function battleMatchesCaseType(game, caseType) {
+  if (!caseType) return true;
+  const boxes = game?.boxes || [];
+  return boxes.length > 0 && boxes.every((entry) =>
+    String(entry?.box?.type || entry?.type || "").toLowerCase() === caseType,
+  );
 }
 
 function mergeBattleUpdate(current, incoming) {
@@ -350,7 +383,10 @@ function AnimatedNumber({ value, format = formatAmount }) {
   return <span ref={elementRef} aria-label={format(Number(value) || 0)} />;
 }
 
-function BattleBoxes({ game }) {
+function BattleBoxes({ game, onCaseInfo }) {
+  const dragEnabled = useContext(BattleRowVariantContext) === "cspvp";
+  const scrollerRef = useRef(null);
+  const dragRef = useRef({ pointerId: null, startX: 0, scrollLeft: 0, moved: false });
   const rounds = game?.rounds?.length
     ? game.rounds.map((round) => round.box)
     : (game?.boxes || []).flatMap((entry) =>
@@ -360,6 +396,42 @@ function BattleBoxes({ game }) {
     <div className="battles-game-boxes-wrapper" {...boxesScope}>
       <div
         className={`battles-game-boxes${game?.state === "rolling" ? " boxes-rolling" : ""}${game?.state === "completed" ? " boxes-completed" : ""}`}
+        ref={scrollerRef}
+        onPointerDown={(event) => {
+          if (!dragEnabled || event.button !== 0) return;
+          const scroller = scrollerRef.current;
+          if (!scroller) return;
+          dragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            scrollLeft: scroller.scrollLeft,
+            moved: false,
+          };
+          scroller.setPointerCapture(event.pointerId);
+          scroller.classList.add("is-dragging");
+        }}
+        onPointerMove={(event) => {
+          if (!dragEnabled || dragRef.current.pointerId !== event.pointerId) return;
+          const scroller = scrollerRef.current;
+          if (!scroller) return;
+          const delta = event.clientX - dragRef.current.startX;
+          if (Math.abs(delta) > 3) dragRef.current.moved = true;
+          if (!dragRef.current.moved) return;
+          event.preventDefault();
+          scroller.scrollLeft = dragRef.current.scrollLeft - delta;
+        }}
+        onPointerUp={(event) => {
+          if (!dragEnabled || dragRef.current.pointerId !== event.pointerId) return;
+          const scroller = scrollerRef.current;
+          if (scroller?.hasPointerCapture(event.pointerId)) scroller.releasePointerCapture(event.pointerId);
+          scroller?.classList.remove("is-dragging");
+          dragRef.current.pointerId = null;
+        }}
+        onPointerCancel={(event) => {
+          if (!dragEnabled || dragRef.current.pointerId !== event.pointerId) return;
+          scrollerRef.current?.classList.remove("is-dragging");
+          dragRef.current.pointerId = null;
+        }}
         {...boxesScope}
       >
         <div className="boxes-list" {...boxesScope}>
@@ -369,6 +441,14 @@ function BattleBoxes({ game }) {
               type="button"
               key={`${box?._id || box?.caseId}-${index}`}
               title={box?.name}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (dragRef.current.moved) {
+                  dragRef.current.moved = false;
+                  return;
+                }
+                onCaseInfo?.(box, game.currency);
+              }}
               {...boxesScope}
             >
               <img
@@ -376,6 +456,7 @@ function BattleBoxes({ game }) {
                 src={box?.imageUrl || box?.image}
                 loading="lazy"
                 decoding="async"
+                draggable="false"
                 alt={box?.name || ""}
                 {...boxesScope}
               />
@@ -384,6 +465,7 @@ function BattleBoxes({ game }) {
                 src={box?.imageUrl || box?.image}
                 loading="lazy"
                 decoding="async"
+                draggable="false"
                 aria-hidden="true"
                 alt=""
                 {...boxesScope}
@@ -402,7 +484,9 @@ function BattleBoxes({ game }) {
   );
 }
 
-const BattleRow = memo(function BattleRow({ game, onJoin, rowRef }) {
+const BattleRow = memo(function BattleRow({ game, onJoin, onCaseInfo, rowRef }) {
+  const rowVariant = useContext(BattleRowVariantContext);
+  const cspvpRow = rowVariant === "cspvp";
   const bets = fixedBets(game);
   const theme = battleTheme(game);
   const totalRounds = Number(game.totalRounds) || game.rounds?.length || 1;
@@ -506,12 +590,25 @@ const BattleRow = memo(function BattleRow({ game, onJoin, rowRef }) {
         </div>
       </div>
       <div className="cases-section" {...rowScope}>
-        <BattleBoxes game={game} />
+        <BattleBoxes game={game} onCaseInfo={onCaseInfo} />
       </div>
       <div className="right-section" {...rowScope}>
+        {cspvpRow && (
+          <div className="right-amount" {...rowScope}>
+            <div className="effective-label" {...rowScope}>
+              <span {...rowScope}>Battle Value</span>
+              <div className="effective-amount" {...rowScope}>
+                <BattleCurrencyIcon currency={game.currency} alt="" {...rowScope} />
+                <span className="effective-value" {...rowScope}>
+                  {formatAmount(game.amount)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="right-action" {...rowScope}>
           <button
-            className={`action-button ${viewMode ? `link-replay link-replay-${theme}` : "button-join"}`}
+            className={`action-button ${viewMode ? cspvpRow ? "link-replay" : `link-replay link-replay-${theme}` : "button-join"}`}
             type="button"
             onClick={(event) => {
               event.stopPropagation();
@@ -519,7 +616,7 @@ const BattleRow = memo(function BattleRow({ game, onJoin, rowRef }) {
             }}
             {...rowScope}
           >
-            {viewMode ? (
+            {!cspvpRow && (viewMode ? (
               <BattleIcon
                 className="action-button-icon"
                 name="eye"
@@ -531,35 +628,36 @@ const BattleRow = memo(function BattleRow({ game, onJoin, rowRef }) {
                 name="join"
                 {...rowScope}
               />
-            )}
-            <span {...rowScope}>
-              {viewMode ? "View Battle" : "Join Battle"}
-            </span>
+            ))}
+            <span {...rowScope}>{viewMode ? "View Battle" : "Join Battle"}</span>
           </button>
-          <div
-            className={`effective-amount${joinAmount <= 0 ? " is-free" : ""}`}
-            {...rowScope}
-          >
-            {joinAmount > 0 && (
-              <img src={currencyIcon(game.currency)} alt="" {...rowScope} />
-            )}
-            <span className="effective-value" {...rowScope}>
-              {joinAmount <= 0 ? "FREE" : formatAmount(joinAmount)}
-            </span>
-          </div>
+          {!cspvpRow && (
+            <div
+              className={`effective-amount${joinAmount <= 0 ? " is-free" : ""}`}
+              {...rowScope}
+            >
+              {joinAmount > 0 && (
+                <BattleCurrencyIcon currency={game.currency} alt="" {...rowScope} />
+              )}
+              <span className="effective-value" {...rowScope}>
+                {joinAmount <= 0 ? "FREE" : formatAmount(joinAmount)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }, (previous, next) =>
   previous.onJoin === next.onJoin &&
+  previous.onCaseInfo === next.onCaseInfo &&
   previous.game?._id === next.game?._id &&
   previous.game?.version === next.game?.version &&
   previous.game?.state === next.game?.state &&
   previous.game?.currentRound === next.game?.currentRound,
 );
 
-function Lobby({ games, loading, sort, setSort, currency, onJoin }) {
+function Lobby({ games, loading, sort, setSort, currency, onJoin, onCaseInfo }) {
   const [clock, setClock] = useState(() => Date.now());
   const battleNodes = useRef(new Map());
   const battlePositions = useRef(new Map());
@@ -670,8 +768,8 @@ function Lobby({ games, loading, sort, setSort, currency, onJoin }) {
               </div>
               <div className="stats-divider" {...overviewHeaderScope} />
               <div className="stats-item" {...overviewHeaderScope}>
-                <img
-                  src={currencyIcon(currency)}
+                <BattleCurrencyIcon
+                  currency={currency}
                   alt=""
                   {...overviewHeaderScope}
                 />
@@ -749,6 +847,7 @@ function Lobby({ games, loading, sort, setSort, currency, onJoin }) {
                     <BattleRow
                       game={game}
                       onJoin={onJoin}
+                      onCaseInfo={onCaseInfo}
                       rowRef={(node) => registerBattleNode(game._id, node)}
                       key={game._id}
                     />
@@ -819,7 +918,7 @@ const BattleCaseCard = memo(function BattleCaseCard({
               {box.name}
             </div>
             <div className="box-price" {...cardScope}>
-              <img src={currencyIcon(currency)} alt="" {...cardScope} />
+              <BattleCurrencyIcon currency={currency} alt="" {...cardScope} />
               <span {...cardScope}>
                 {formatAmount(Number(amount) * Math.max(1, count))}
               </span>
@@ -1192,9 +1291,9 @@ function SliderModal({
             {isBorrow ? "Borrowing" : "Joiners Pay"}
           </span>
           <span className={`${prefix}-value`} {...scope}>
-            <img
+            <BattleCurrencyIcon
               className="row-icon"
-              src={currencyIcon(currency)}
+              currency={currency}
               alt=""
               {...scope}
             />
@@ -1206,9 +1305,9 @@ function SliderModal({
             You Pay
           </span>
           <span className={`${prefix}-value`} {...scope}>
-            <img
+            <BattleCurrencyIcon
               className="row-icon"
-              src={currencyIcon(currency)}
+              currency={currency}
               alt=""
               {...scope}
             />
@@ -1522,8 +1621,8 @@ function CreateBattle({ boxes, currency, user, onUserUpdate }) {
                 {modes.borrow ? "Total Value Borrow" : "Total Value"}
               </span>
               <div className="total-value-amount" {...createHeaderScope}>
-                <img
-                  src={currencyIcon(currency)}
+                <BattleCurrencyIcon
+                  currency={currency}
                   alt=""
                   {...createHeaderScope}
                 />
@@ -2113,7 +2212,7 @@ const BattleReelElement = memo(function BattleReelElement({
         <div className="element-info element-info-landed" {...reelScope}>
           <span {...reelScope}>{item?.name || ""}</span>
           <div className="info-amount" {...reelScope}>
-            <img src={currencyIcon(currency)} alt="" {...reelScope} />
+            <BattleCurrencyIcon currency={currency} alt="" {...reelScope} />
             <div className="amount-value" {...reelScope}>
               {formatAmount(resultAmount)}
             </div>
@@ -2408,7 +2507,7 @@ function BattleResultPlaceholder({ box, round, currency }) {
           Round {round}
         </div>
         <div className="inner-price" {...placeholderScope}>
-          <img src={currencyIcon(currency)} alt="" {...placeholderScope} />
+          <BattleCurrencyIcon currency={currency} alt="" {...placeholderScope} />
           <div className="price-value" {...placeholderScope}>
             <span {...placeholderScope}>{formatAmount(box?.amount)}</span>
           </div>
@@ -2788,6 +2887,7 @@ const JackpotWheel = memo(function JackpotWheel({ game }) {
 );
 
 const PlayerResult = memo(function PlayerResult({ bet, game }) {
+  const showRanks = useContext(BattleRanksContext);
   const winner =
     Number(bet?.payout) > 0 ||
     game?.winnerSlots?.map(Number).includes(Number(bet?.slot));
@@ -2844,14 +2944,14 @@ const PlayerResult = memo(function PlayerResult({ bet, game }) {
             </div>
               <div className="user-name-amount" {...betScope}>
                 <div className="user-rank-level" {...betScope}>
-                  {bet && !bet.bot && <BattleUserRank user={bet.user} />}
+                  {showRanks && bet && !bet.bot && <BattleUserRank user={bet.user} />}
                   <span {...betScope}>
                   {bet?.user?.username || (bet?.bot ? "Risk Bot" : "Waiting...")}
                 </span>
               </div>
               <div className="info-amount" {...betScope}>
                 {!game.options?.jackpot && (
-                  <img src={currencyIcon(game.currency)} alt="" {...betScope} />
+                  <BattleCurrencyIcon currency={game.currency} alt="" {...betScope} />
                 )}
                 <div className="amount-value" {...betScope}>
                   {game.options?.jackpot ? (
@@ -3301,8 +3401,8 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                       className="battles-header-game-left-info-label-amount normal"
                       {...gameHeaderScope}
                     >
-                      <img
-                        src={currencyIcon(game.currency)}
+                      <BattleCurrencyIcon
+                        currency={game.currency}
                         alt=""
                         {...gameHeaderScope}
                       />{" "}
@@ -3317,8 +3417,8 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                       "FREE"
                     ) : (
                       <>
-                        <img
-                          src={currencyIcon(game.currency)}
+                        <BattleCurrencyIcon
+                          currency={game.currency}
                           alt=""
                           {...gameHeaderScope}
                         />{" "}
@@ -3453,8 +3553,8 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                         {round.box?.name}
                       </span>
                       <span className="item-price" {...gameInfoScope}>
-                        <img
-                          src={currencyIcon(game.currency)}
+                        <BattleCurrencyIcon
+                          currency={game.currency}
                           alt=""
                           {...gameInfoScope}
                         />
@@ -3500,9 +3600,9 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                     className={`jackpot-pot-amount${Number(game.roundProgress || 0) >= 0.88 ? " animating" : ""}`}
                     {...spinnerScope}
                   >
-                    <img
+                    <BattleCurrencyIcon
                       className="jackpot-pot-icon"
-                      src={currencyIcon(game.currency)}
+                      currency={game.currency}
                       alt="Coins"
                       {...spinnerScope}
                     />
@@ -3745,8 +3845,8 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
                         className="winner-amount-container"
                         {...spinnerScope}
                       >
-                        <img
-                          src={currencyIcon(game.currency)}
+                        <BattleCurrencyIcon
+                          currency={game.currency}
                           alt=""
                           {...spinnerScope}
                         />
@@ -3797,7 +3897,7 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
           label={`${caseInfo.name || "Case"} details`}
           onClose={() => setCaseInfo(null)}
         >
-          <CaseInfoModal box={caseInfo} currency={game.currency} />
+          <BattleCaseInfoModal box={caseInfo} currency={game.currency} />
         </ModalAnimation>
       )}
       <button
@@ -3811,13 +3911,15 @@ function BattleDetail({ game: sourceGame, user, busy, onAction, onRefresh }) {
   );
 }
 
-function Battles({ user, battleId, battleCreate = false, onSignIn }) {
+function Battles({ user, battleId, battleCreate = false, onSignIn, siteName = "RoRisk.com", priceIcon, battleIconRenderer = renderDefaultBattleIcon, battleRowVariant = "rorisk", caseType, caseInfoModalRenderer = renderDefaultCaseInfoModal, showRanks = true }) {
+  const normalizedCaseType = String(caseType || "").toLowerCase();
   const [games, setGames] = useState([]);
   const [game, setGame] = useState(null);
   const [boxes, setBoxes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("date");
   const [join, setJoin] = useState(null);
+  const [caseInfo, setCaseInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [currency, setCurrency] = useState(() =>
     window.localStorage.getItem("currency") === "coins" ? "coins" : "rocoins",
@@ -3828,28 +3930,38 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
         const payload = await request(
           `/api/battles/${encodeURIComponent(battleId)}`,
         );
+        if (!battleMatchesCaseType(payload.game, normalizedCaseType)) {
+          navigate("/battles");
+          return;
+        }
         setGame((current) => mergeBattleUpdate(current, payload.game));
       } else if (!battleCreate) {
         const payload = await request("/api/battles");
-        setGames(payload.games || []);
+        setGames((payload.games || []).filter((entry) =>
+          battleMatchesCaseType(entry, normalizedCaseType),
+        ));
       }
     } catch (error) {
       if (battleId) notify({ type: "error", message: error.message });
     } finally {
       setLoading(false);
     }
-  }, [battleCreate, battleId]);
+  }, [battleCreate, battleId, normalizedCaseType]);
   useEffect(() => {
     document.title = battleCreate
-      ? "Create Battle - RoRisk.com"
+      ? `Create Battle - ${siteName}`
       : battleId
-        ? "Battle - RoRisk.com"
-        : "Battles - RoRisk.com";
+        ? `Battle - ${siteName}`
+        : `Battles - ${siteName}`;
     const initialRefresh = window.setTimeout(refresh, 0);
     const timer = window.setInterval(refresh, battleId ? 3000 : 4000);
     const realtime = (event) => {
       const updated = event.detail?.game;
       if (!updated?._id) return;
+      if (!battleMatchesCaseType(updated, normalizedCaseType)) {
+        setGames((current) => current.filter((entry) => entry._id !== updated._id));
+        return;
+      }
       setGames((current) => [
         updated,
         ...current.filter((entry) => entry._id !== updated._id),
@@ -3866,7 +3978,7 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
       window.clearInterval(timer);
       window.removeEventListener("rorisk:battle-update", realtime);
     };
-  }, [battleId, battleCreate, refresh]);
+  }, [battleId, battleCreate, normalizedCaseType, refresh, siteName]);
   useEffect(() => {
     if (!battleCreate) return undefined;
     let cancelled = false;
@@ -3876,6 +3988,7 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
         setBoxes(
           cases.filter(
             (box) =>
+              (!normalizedCaseType || String(box.type || "").toLowerCase() === normalizedCaseType) &&
               !(box.categories || []).some((category) =>
                 ["daily", "rewards", "bonus"].includes(category),
               ),
@@ -3886,7 +3999,7 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
     return () => {
       cancelled = true;
     };
-  }, [battleCreate, currency]);
+  }, [battleCreate, currency, normalizedCaseType]);
   useEffect(() => {
     const update = (event) =>
       setCurrency(event.detail?.currency === "coins" ? "coins" : "rocoins");
@@ -3982,10 +4095,15 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
     }
   };
   return (
-    <div
-      className={`battles${battleId ? " battles-game-route" : ""}`}
-      {...rootScope}
-    >
+    <BattleIconContext.Provider value={battleIconRenderer}>
+      <BattlePriceIconContext.Provider value={priceIcon || null}>
+        <BattleCaseInfoModalContext.Provider value={caseInfoModalRenderer}>
+          <BattleRanksContext.Provider value={showRanks}>
+            <BattleRowVariantContext.Provider value={battleRowVariant}>
+              <div
+                className={`battles${battleId ? " battles-game-route" : ""}`}
+                {...rootScope}
+              >
       {battleCreate ? (
         <CreateBattle
           boxes={boxes}
@@ -4011,6 +4129,7 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
           setSort={setSort}
           currency={currency}
           onJoin={askJoin}
+          onCaseInfo={(box, battleCurrency) => setCaseInfo({ box, currency: battleCurrency })}
         />
       )}
       {join && (
@@ -4022,7 +4141,20 @@ function Battles({ user, battleId, battleCreate = false, onSignIn }) {
           />
         </ModalAnimation>
       )}
-    </div>
+      {caseInfo && (
+        <ModalAnimation
+          label={`${caseInfo.box?.name || "Case"} details`}
+          onClose={() => setCaseInfo(null)}
+        >
+          <BattleCaseInfoModal box={caseInfo.box} currency={caseInfo.currency} />
+        </ModalAnimation>
+      )}
+              </div>
+            </BattleRowVariantContext.Provider>
+          </BattleRanksContext.Provider>
+        </BattleCaseInfoModalContext.Provider>
+      </BattlePriceIconContext.Provider>
+    </BattleIconContext.Provider>
   );
 }
 

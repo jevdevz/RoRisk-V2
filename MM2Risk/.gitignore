@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.local
+MM2Risk-home-preview.png

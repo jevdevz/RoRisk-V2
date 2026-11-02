@@ -29,6 +29,10 @@ function itemPrice(item, currency) {
   return Math.max(0, Number(explicit ?? item?.price) || 0)
 }
 
+function currencyIcon(currency, priceIcon) {
+  return priceIcon || (currency === 'coins' ? '/assets/currency/coin.svg' : '/assets/currency/rocoin.2d3febd5.svg')
+}
+
 function chanceNumber(item) {
   return Number.parseFloat(String(item?.chance || '0').replace('%', '')) || 0
 }
@@ -229,23 +233,23 @@ function Arrow({ direction }) {
   return <div className={`cases-spinner-arrow cases-spinner-arrow-${direction}`} {...spinnerScope}><svg fill="currentColor" viewBox="0 0 512 512" aria-hidden="true" {...spinnerScope}><path d="m98 190.06 139.78 163.12a24 24 0 0 0 36.44 0L414 190.06c13.34-15.57 2.28-39.62-18.22-39.62h-279.6c-20.5 0-31.56 24.05-18.18 39.62z" {...spinnerScope} /></svg></div>
 }
 
-const Reel = memo(function Reel({ items, style, winnerVisible, currency }) {
+const Reel = memo(function Reel({ items, style, winnerVisible, currency, priceIcon }) {
   return <div className="cases-reel" style={style} {...reelScope}>{items.map((item, index) => {
     const winner = index === 60 && winnerVisible
     return <div className={`reel-element ${itemVisualClass(item)}${index === (winnerVisible ? 60 : 20) ? ' element-active' : ''}${winner ? ' element-winner' : ''}`} key={index} {...reelScope}>
       <div className="element-vector-container" {...reelScope}><Pattern scope={reelScope} className="pattern-bg from-colored-text position-absolute" /></div>
       {item && <div className="element-image" {...reelScope}><img src={item.image} alt="" {...reelScope} /><div className="element-glow" {...reelScope} /></div>}
-      {winner && <div className="element-info" {...reelScope}><span {...reelScope}>{displayItemName(item)}</span><div className="info-amount" {...reelScope}><img src={currency === 'coins' ? '/assets/currency/coin.svg' : '/assets/currency/rocoin.2d3febd5.svg'} alt="icon" {...reelScope} /><div className="amount-value" {...reelScope}>{formatAmount(itemPrice(item, currency))}</div></div></div>}
+      {winner && <div className="element-info" {...reelScope}><span {...reelScope}>{displayItemName(item)}</span><div className="info-amount" {...reelScope}><img src={currencyIcon(currency, priceIcon)} alt="icon" {...reelScope} /><div className="amount-value" {...reelScope}>{formatAmount(itemPrice(item, currency))}</div></div></div>}
     </div>
   })}</div>
 })
 
-const Spinner = memo(function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency, variant = '' }) {
+const Spinner = memo(function Spinner({ count, reels, styles, winnerVisible, spinnerRef, currency, priceIcon, variant = '' }) {
   return <div ref={spinnerRef} className={`cases-spinner spinner-${count}${variant ? ` spinner-${variant}` : ''}`} {...pageScope} {...spinnerScope}>
     {count === 1 ? <><div className="shadow-left" {...spinnerScope} /><div className="shadow-right" {...spinnerScope} /></> : <><div className="shadow-top" {...spinnerScope} /><div className="shadow-bottom" {...spinnerScope} /></>}
     {reels.map((reel, index) => <div className="inner-wheel" key={index} {...spinnerScope}>
       <canvas className="confetti-canvas" {...spinnerScope} />
-      <Reel items={reel} style={styles[index]} winnerVisible={winnerVisible} currency={currency} />
+      <Reel items={reel} style={styles[index]} winnerVisible={winnerVisible} currency={currency} priceIcon={priceIcon} />
       {index < count - 1 && <div className="spinner-separator" {...spinnerScope} />}
     </div>)}
     {count === 1 ? <><Arrow direction="top" /><Arrow direction="bottom" /></> : <><Arrow direction="left" /><Arrow direction="right" /></>}
@@ -309,7 +313,7 @@ function launchConfetti(anchor, index) {
   }, 3000)
 }
 
-function ItemCard({ item, items, currency }) {
+function ItemCard({ item, items, currency, priceIcon }) {
   const [showRange, setShowRange] = useState(false)
   const rarity = rarityKey(item)
   const chance = chanceNumber(item)
@@ -331,11 +335,11 @@ function ItemCard({ item, items, currency }) {
     <div className="inner-percent" {...itemScope}><div className="percent-text" {...itemScope}><span {...itemScope}>{showRange && ticketRange ? ticketRange : `${chance}%`}</span></div></div>
     <div className="inner-vector-container" {...itemScope}><Pattern scope={itemScope} chroma={rarity === 'chroma'} className={`pattern-bg position-absolute${rarity === 'chroma' ? ' pattern-chroma' : ''}`} /></div>
     <div className="inner-image" {...itemScope}><img src={item.image} alt="" {...itemScope} /><div className={`inner-glow ${itemGlowClass(item)}`} {...itemScope} /></div>
-    <div className="inner-info" {...itemScope}><div className="inner-name" {...itemScope}>{displayItemName(item)}</div><div className="inner-price" {...itemScope}><img src={currency === 'coins' ? '/assets/currency/coin.svg' : '/assets/currency/rocoin.2d3febd5.svg'} alt="icon" {...itemScope} /><div className="price-value" {...itemScope}><span {...itemScope}>{formatAmount(itemPrice(item, currency))}</span></div></div></div>
+    <div className="inner-info" {...itemScope}><div className="inner-name" {...itemScope}>{displayItemName(item)}</div><div className="inner-price" {...itemScope}><img src={currencyIcon(currency, priceIcon)} alt="icon" {...itemScope} /><div className="price-value" {...itemScope}><span {...itemScope}>{formatAmount(itemPrice(item, currency))}</span></div></div></div>
   </div>
 }
 
-function CaseOpen({ caseId, user, onSignIn }) {
+function CaseOpen({ caseId, user, onSignIn, priceIcon, riskSpinIcon = '/assets/images/battles/risk-spin.png', siteName = 'RoRisk.com', controlsVariant = 'rorisk' }) {
   const [caseData, setCaseData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [count, setCount] = useState(1)
@@ -374,12 +378,12 @@ function CaseOpen({ caseId, user, onSignIn }) {
         const payload = await response.json()
         if (!response.ok) throw new Error(payload.error || 'Unable to load this case.')
         setCaseData(payload.case)
-        document.title = `${payload.case.name} - RoRisk.com`
+        document.title = `${payload.case.name} - ${siteName}`
       })
       .catch((error) => { if (error.name !== 'AbortError') notify({ type: 'error', message: error.message }) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [caseId])
+  }, [caseId, siteName])
 
   useEffect(() => {
     const images = [...new Set((caseData?.items || []).map((item) => item?.image).filter(Boolean))]
@@ -599,23 +603,28 @@ function CaseOpen({ caseId, user, onSignIn }) {
       {loading ? null : !caseData ? <div className="case-page-state" {...pageScope}>This case could not be found.</div> : <div className="cases-box-container" {...pageScope}>
         <div className="cases-header-box" {...pageScope} {...headerScope}>
           <a className="link-back" href={isOtherCase ? '/rewards' : '/cases'} {...headerScope}><SiteIcon name="back" {...headerScope} /> Go Back</a>
-          <div className="box-mid" {...headerScope}><img className={isDailyCase ? 'case-header-daily-image' : undefined} src={caseData.imageUrl} alt="" {...headerScope} /><div className="item-info" {...headerScope}><span className="item-name" {...headerScope}>{caseData.name}</span><span className="item-price" {...headerScope}><img src={currency === 'coins' ? '/assets/currency/coin.svg' : '/assets/currency/rocoin.2d3febd5.svg'} alt="coin" {...headerScope} /> {formatAmount(caseAmount(caseData, currency))}</span></div></div>
+          <div className="box-mid" {...headerScope}><img className={isDailyCase ? 'case-header-daily-image' : undefined} src={caseData.imageUrl} alt="" {...headerScope} /><div className="item-info" {...headerScope}><span className="item-name" {...headerScope}>{caseData.name}</span><span className="item-price" {...headerScope}><img src={currencyIcon(currency, priceIcon)} alt="coin" {...headerScope} /> {formatAmount(caseAmount(caseData, currency))}</span></div></div>
           <button className="button-fair" type="button" onClick={() => { if (!user) notify({ type: 'error', message: 'Please sign in to perform this action.' }); else setShowFairness(true) }} {...headerScope}><SiteIcon name="fairness" {...headerScope} /> Fairness</button>
         </div>
         <div className="cases-box" {...pageScope}>
-          <Spinner count={count} reels={reels} styles={styles} winnerVisible={winnerVisible} spinnerRef={spinnerRef} currency={currency} />
-          <div className={`cases-controls${running || requesting ? ' controls-disabled' : ''}`} {...pageScope} {...controlsScope}><div className="controls-bet" {...controlsScope}>
+          <Spinner count={count} reels={reels} styles={styles} winnerVisible={winnerVisible} spinnerRef={spinnerRef} currency={currency} priceIcon={priceIcon} />
+          <div className={`cases-controls${controlsVariant === 'cspvp' ? ' controls-cspvp' : ''}${running || requesting ? ' controls-disabled' : ''}`} {...pageScope} {...controlsScope}>{controlsVariant === 'cspvp' ? <div className="controls-bet" {...controlsScope}>
+            <div className="controls-count" {...controlsScope}>{[1, 2, 3, 4].map((value) => <button className={count === value ? 'button-active' : ''} type="button" disabled={running || requesting} onClick={() => setCount(value)} key={value} {...controlsScope}>{value}x</button>)}</div>
+            <button className="button-bet" type="button" disabled={running || requesting} onClick={() => openCase(false)} {...controlsScope}>Open {count} Case <div className="inner-amount" {...controlsScope}><img src={currencyIcon(currency, priceIcon)} alt="icon" {...controlsScope} /><div className="amount-value" {...controlsScope}><span {...controlsScope}>{formatAmount(total)}</span></div></div></button>
+            <button className="button-demo" type="button" disabled={running || requesting} onClick={() => openCase(true)} {...controlsScope}>Demo Spin</button>
+            <div className="controls-fast-spin" {...controlsScope}><button className={`button-fast-spin${fast ? ' button-active' : ''}`} type="button" disabled={running || requesting} aria-label="Fast Spin" aria-pressed={fast} onClick={() => setFast((value) => !value)} {...controlsScope}><FastIcon /></button></div>
+          </div> : <div className="controls-bet" {...controlsScope}>
             <div className="controls-left" {...controlsScope}><div className="controls-count" {...controlsScope}>{[1, 2, 3, 4].map((value) => <button className={count === value ? 'button-active' : ''} type="button" disabled={running || requesting} onClick={() => setCount(value)} key={value} {...controlsScope}>{value}x</button>)}</div></div>
             <div className="controls-center" {...controlsScope}>
-              <button className="button-bet" type="button" disabled={running || requesting} onClick={() => openCase(false)} {...controlsScope}>Open {count} Case <div className="inner-amount" {...controlsScope}><img src={currency === 'coins' ? '/assets/currency/coin.svg' : '/assets/currency/rocoin.2d3febd5.svg'} alt="icon" {...controlsScope} /><div className="amount-value" {...controlsScope}><span {...controlsScope}>{formatAmount(total)}</span></div></div></button>
+              <button className="button-bet" type="button" disabled={running || requesting} onClick={() => openCase(false)} {...controlsScope}>Open {count} Case <div className="inner-amount" {...controlsScope}><img src={currencyIcon(currency, priceIcon)} alt="icon" {...controlsScope} /><div className="amount-value" {...controlsScope}><span {...controlsScope}>{formatAmount(total)}</span></div></div></button>
               <button className="button-demo" type="button" disabled={running || requesting} onClick={() => openCase(true)} {...controlsScope}>Demo Spin</button>
             </div>
             <div className="controls-toggles" {...controlsScope}>
               <button className={`button-toggle${fast ? ' is-on' : ''}`} type="button" disabled={running || requesting} aria-pressed={fast} onClick={() => setFast((value) => !value)} {...controlsScope}><FastIcon /><span {...controlsScope}>Fast Spin</span><span className={`cases-switch cases-switch-fast${fast ? ' is-on' : ''}`} aria-hidden="true" {...controlsScope} /></button>
-              <button className={`button-toggle${riskSpin ? ' is-on' : ''}`} type="button" disabled={running || requesting} aria-pressed={riskSpin} onClick={() => setRiskSpin((value) => !value)} {...controlsScope}><img className="toggle-icon" src="/assets/images/battles/risk-spin.png" alt="" {...controlsScope} /><span {...controlsScope}>Risk Spin</span><span className={`cases-switch cases-switch-risk${riskSpin ? ' is-on' : ''}`} aria-hidden="true" {...controlsScope} /></button>
+              <button className={`button-toggle${riskSpin ? ' is-on' : ''}`} type="button" disabled={running || requesting} aria-pressed={riskSpin} onClick={() => setRiskSpin((value) => !value)} {...controlsScope}><img className="toggle-icon" src={riskSpinIcon} alt="" {...controlsScope} /><span {...controlsScope}>Risk Spin</span><span className={`cases-switch cases-switch-risk${riskSpin ? ' is-on' : ''}`} aria-hidden="true" {...controlsScope} /></button>
             </div>
-          </div></div>
-          <div className="box-items" {...pageScope}><div className="items-header" {...pageScope}>Case Items</div><div className="items-content" {...pageScope}>{items.map((item) => <ItemCard item={item} items={items} currency={currency} key={item.index || item.name} />)}</div></div>
+          </div>}</div>
+          <div className="box-items" {...pageScope}><div className="items-header" {...pageScope}>Case Items</div><div className="items-content" {...pageScope}>{items.map((item) => <ItemCard item={item} items={items} currency={currency} priceIcon={priceIcon} key={item.index || item.name} />)}</div></div>
         </div>
       </div>}
     </div>

@@ -8,7 +8,7 @@ const environmentFile = path.join(root, '.env')
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const target = path.join(directory, entry.name)
-    return entry.isDirectory() ? walk(target) : [target]
+    return entry.isDirectory() || fs.statSync(target).isDirectory() ? walk(target) : [target]
   })
 }
 
