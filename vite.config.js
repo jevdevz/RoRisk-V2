@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
   const hacksawCors = {
     origin: 'https://static-live.hacksawgaming.com',
     methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Accept', 'Access-Control-Allow-Origin'],
   }
 
   return {
