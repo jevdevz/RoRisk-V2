@@ -30,6 +30,11 @@ export default defineConfig(({ mode }) => {
     HACKSAW_EXTERNAL_CURRENCY: loadedEnv.HACKSAW_EXTERNAL_CURRENCY,
     HACKSAW_MAX_BET_LEVEL: loadedEnv.HACKSAW_MAX_BET_LEVEL,
   })
+  const hacksawCors = {
+    origin: 'https://static-live.hacksawgaming.com',
+    methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept'],
+  }
 
   return {
     root: applicationRoot,
@@ -43,10 +48,12 @@ export default defineConfig(({ mode }) => {
     plugins: [roriskApi(serverEnv), react()],
     server: {
       allowedHosts: ['rorisk-v2.onrender.com'],
+      cors: hacksawCors,
       host: '0.0.0.0',
     },
     preview: {
       allowedHosts: ['rorisk-v2.onrender.com'],
+      cors: hacksawCors,
       host: '0.0.0.0',
       port: 10000, 
       strictPort: true, 
